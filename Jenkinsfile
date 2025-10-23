@@ -1,23 +1,35 @@
 pipeline {
     agent any
-    environment {
-        DOCKERHUB_CREDENTIALS_ID = 'docker_hub' // Jenkins Docker credentials ID
-        DOCKERHUB_REPO = 'ristler/shoppingcartotp2'     // Docker Hub repository
-        DOCKER_IMAGE_TAG = 'latest'              // Docker image tag
-    }
     tools {
         maven 'Maven 3.9.11'
     }
+
+    environment {
+        PATH = "/Applications/Docker.app/Contents/Resources/bin:${env.PATH}"
+        DOCKERHUB_CREDENTIALS_ID = 'docker_hub'
+        DOCKER_IMAGE = 'ristler/shoppingcartotp2'
+        DOCKER_TAG = 'latest'
+    }
+
     stages {
+        stage('Setup Maven') {
+            steps {
+                script {
+                    def mvnHome = tool name: 'Maven 3.9.11', type: 'maven'
+                    env.PATH = "${mvnHome}/bin:${env.PATH}"
+                }
+            }
+        }
+
         stage('Checkout') {
             steps {
-                git 'https://github.com/Ristler/shoppingCartOTP2'
+                git branch: 'master', url: 'https://github.com/Ristler/shoppingCartOTP2.git'
             }
         }
 
         stage('Build') {
             steps {
-                sh 'mvn clean install'
+                sh 'mvn clean package -DskipTests'
             }
         }
 
@@ -27,44 +39,38 @@ pipeline {
             }
         }
 
-        stage('Code Coverage') {
-            steps {
-                sh 'mvn jacoco:report'
-            }
-        }
-
-        stage('Publish Test Results') {
-            steps {
-                junit '**/target/surefire-reports/*.xml'
-            }
-        }
-
-        stage('Publish Coverage Report') {
-            steps {
-                jacoco()
-            }
-        }
-
         stage('Build Docker Image') {
             steps {
-                sh '/Applications/Docker.app/Contents/Resources/bin/docker build -t $DOCKERHUB_REPO:$DOCKER_IMAGE_TAG .'
+                sh "docker build -t ${DOCKER_IMAGE}:${DOCKER_TAG} ."
             }
         }
 
         stage('Push Docker Image to Docker Hub') {
             steps {
                 withCredentials([usernamePassword(
-                    credentialsId: "${DOCKERHUB_CREDENTIALS_ID}",
+                    credentialsId: env.DOCKERHUB_CREDENTIALS_ID,
                     usernameVariable: 'DOCKER_USER',
-                    passwordVariable: 'DOCKER_PASS')]) {
-                    sh '''
-                        # Use a temporary Docker config directory to bypass macOS credential helper
-                        export DOCKER_CONFIG=$(mktemp -d)
-                        echo $DOCKER_PASS | /Applications/Docker.app/Contents/Resources/bin/docker login -u $DOCKER_USER --password-stdin
-                        /Applications/Docker.app/Contents/Resources/bin/docker push $DOCKERHUB_REPO:$DOCKER_IMAGE_TAG
-                    '''
+                    passwordVariable: 'DOCKER_PASS'
+                )]) {
+                    sh """
+                        docker login -u $DOCKER_USER -p $DOCKER_PASS
+                        docker push ${DOCKER_IMAGE}:${DOCKER_TAG}
+                    """
                 }
             }
+        }
+    }
+
+    post {
+        always {
+            junit(testResults: '**/target/surefire-reports/*.xml', allowEmptyResults: true)
+            jacoco(
+                execPattern: '**/target/jacoco.exec',
+                classPattern: '**/target/classes',
+                sourcePattern: '**/src/main/java',
+                inclusionPattern: '**/*.class',
+                exclusionPattern: ''
+            )
         }
     }
 }

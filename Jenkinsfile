@@ -2,7 +2,7 @@ pipeline {
     agent any
     environment {
         DOCKERHUB_CREDENTIALS_ID = 'docker_hub' // Jenkins Docker credentials ID
-        DOCKERHUB_REPO = 'ristler/shoppingCartotp2'     // Docker Hub repository
+        DOCKERHUB_REPO = 'ristler/shoppingcartotp2'     // Docker Hub repository
         DOCKER_IMAGE_TAG = 'latest'              // Docker image tag
     }
     tools {
